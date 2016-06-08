@@ -1,0 +1,202 @@
+{
+  "Parameters": {
+    "VPCcidr": {
+      "Description": "VPC cidr block",
+      "Type": "String",
+      "Default": "10.11.0.0/16"
+    },
+    "PublicSubnet1cidr": {
+      "Description": "Public subnet 1 cidr",
+      "Type": "String",
+      "Default": "10.11.0.0/24"
+    },
+    "PublicSubnet2cidr": {
+      "Description": "Public subnet 2 cidr",
+      "Type": "String",
+      "Default": "10.11.1.0/24"
+    },
+    "PrivateSubnet1cidr": {
+      "Description": "Private subnet 1 cidr",
+      "Type": "String",
+      "Default": "10.11.2.0/24"
+    },
+    "PrivateSubnet2cidr": {
+      "Description": "Private subnet 2 cidr",
+      "Type": "String",
+      "Default": "10.11.3.0/24"
+    },
+    "Subnet1AZ": {
+      "Description": "AZ for public and private subnet 1",
+      "Type": "AWS::EC2::AvailabilityZone::Name"
+    },
+    "Subnet2AZ": {
+      "Description": "AZ for public and private subnet 2",
+      "Type": "AWS::EC2::AvailabilityZone::Name"
+    },
+    "SSHKey": {
+      "Description": "EC2 SSH key",
+      "Type": "AWS::EC2::KeyPair::KeyName"
+    },
+    "EC2BastionAMI": {
+      "Description": "Bastion host AMI",
+      "Type": "AWS::EC2::Image::Id"
+    },
+    "EC2BastionType": {
+      "Description": "Bastion host type",
+      "Type": "String",
+      "AllowedValues": [
+        "t1.micro",
+        "t2.nano",
+        "t2.micro",
+        "t2.small",
+        "t2.medium",
+        "t2.large"
+      ]
+    }
+  },
+  "Resources": {
+  "VPC": {
+    "Properties": {
+      "CidrBlock": { "Ref": "VPCcidr"},
+      "EnableDnsHostnames": true,
+      "EnableDnsSupport": true,
+      "InstanceTenancy": "default",
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": {"Ref": "AWS::StackName"}
+        }
+      ]
+    },
+    "Type": "AWS::EC2::VPC"
+  },
+  "PrivateSubnet1": {
+    "Properties": {
+      "AvailabilityZone": {"Ref": "Subnet1AZ"},
+      "CidrBlock": {"Ref": "PrivateSubnet1cidr"},
+      "MapPublicIpOnLaunch": false,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": {"Ref": "AWS::StackName"}
+        }
+      ],
+      "VpcId": {"Ref": "VPC"}
+    },
+    "Type": "AWS::EC2::Subnet"
+  },
+  "PrivateSubnet2": {
+    "Properties": {
+      "AvailabilityZone": {"Ref": "Subnet2AZ"},
+      "CidrBlock": {"Ref": "PrivateSubnet2cidr"},
+      "MapPublicIpOnLaunch": false,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": {"Ref": "AWS::StackName"}
+        }
+      ],
+      "VpcId": {"Ref": "VPC"}
+    },
+    "Type": "AWS::EC2::Subnet"
+  },
+  "PublicSubnet1": {
+    "Properties": {
+      "AvailabilityZone": {"Ref": "Subnet1AZ"},
+      "CidrBlock": {"Ref": "PublicSubnet1cidr"},
+      "MapPublicIpOnLaunch": true,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": {"Ref": "AWS::StackName"}
+        }
+      ],
+      "VpcId": {"Ref": "VPC"}
+    },
+    "Type": "AWS::EC2::Subnet"
+  },
+  "PublicSubnet2": {
+    "Properties": {
+      "AvailabilityZone": {"Ref": "Subnet2AZ"},
+      "CidrBlock": {"Ref": "PublicSubnet2cidr"},
+      "MapPublicIpOnLaunch": true,
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": {"Ref": "AWS::StackName"}
+        }
+      ],
+      "VpcId": {"Ref": "VPC"}
+    },
+    "Type": "AWS::EC2::Subnet"
+  },
+  "IGW": {
+    "Type" : "AWS::EC2::InternetGateway"
+  },
+  "IGWAttachement": {
+    "Type" : "AWS::EC2::VPCGatewayAttachment",
+    "Properties": {
+      "InternetGatewayId": {"Ref": "IGW"},
+      "VpcId": {"Ref": "VPC"}
+    }
+  },
+  "EIPNAT1" : {
+    "Type" : "AWS::EC2::EIP",
+    "Properties" : {
+      "Domain" : "vpc"
+    }
+  },
+  "EIPNAT2" : {
+    "Type" : "AWS::EC2::EIP",
+    "Properties" : {
+      "Domain" : "vpc"
+    }
+  },
+  "NAT1" : {
+    "Type" : "AWS::EC2::NatGateway",
+    "Properties" : {
+      "AllocationId" : { "Fn::GetAtt" : ["EIPNAT1", "AllocationId"]},
+      "SubnetId" : { "Ref" : "PublicSubnet1"}
+    }
+  },
+  "NAT2" : {
+    "Type" : "AWS::EC2::NatGateway",
+    "Properties" : {
+      "AllocationId" : { "Fn::GetAtt" : ["EIPNAT2", "AllocationId"]},
+      "SubnetId" : { "Ref" : "PublicSubnet2"}
+    }
+  },
+  "BastionInstance": {
+    "Type" : "AWS::EC2::Instance",
+    "Properties": {
+      "AvailabilityZone": {"Ref": "Subnet1AZ"},
+      "ImageId": {"Ref": "EC2BastionAMI"},
+      "InstanceType": {"Ref": "EC2BastionType"},
+      "KeyName": {"Ref": "SSHKey"},
+      "SubnetId": {"Ref": "PublicSubnet1"},
+      "SecurityGroupIds" : [
+        { "Ref" : "BastionSecurityGroup" }
+      ]
+    }
+  },
+  "BastionSecurityGroup": {
+    "Type" : "AWS::EC2::SecurityGroup",
+    "Properties": {
+      "VpcId" : { "Ref" : "VPC" },
+      "GroupDescription": "Bastion instance security group",
+      "SecurityGroupIngress": [
+        { "IpProtocol" : "tcp", "FromPort" : "22", "ToPort" : "22", "CidrIp" : "0.0.0.0/0" },
+        { "IpProtocol" : "udp", "FromPort" : "1194", "ToPort" : "1194", "CidrIp" : "0.0.0.0/0" }
+      ]
+    }
+  }
+},
+  "Outputs": {
+    "BastionIP": {
+      "Value" : {
+        "Fn::GetAtt": ["BastionInstance", "PublicIp"]
+      },
+      "Description": "Bastion instance IP address "
+    }
+  }
+}
