@@ -15,16 +15,6 @@
       "Type": "String",
       "Default": "10.11.1.0/24"
     },
-    "PrivateSubnet1cidr": {
-      "Description": "Private subnet 1 cidr",
-      "Type": "String",
-      "Default": "10.11.2.0/24"
-    },
-    "PrivateSubnet2cidr": {
-      "Description": "Private subnet 2 cidr",
-      "Type": "String",
-      "Default": "10.11.3.0/24"
-    },
     "Subnet1AZ": {
       "Description": "AZ for public and private subnet 1",
       "Type": "AWS::EC2::AvailabilityZone::Name"
@@ -52,6 +42,18 @@
         "t2.medium",
         "t2.large"
       ]
+    },
+    "ENV": {
+      "Description": "Environment name",
+      "Type": "String",
+      "AllowedValues": [
+        "dev",
+        "prod"
+      ]
+    },
+    "DOMAIN": {
+      "Description": "Domain name",
+      "Type": "String"
     }
   },
   "Resources": {
@@ -69,36 +71,6 @@
       ]
     },
     "Type": "AWS::EC2::VPC"
-  },
-  "PrivateSubnet1": {
-    "Properties": {
-      "AvailabilityZone": {"Ref": "Subnet1AZ"},
-      "CidrBlock": {"Ref": "PrivateSubnet1cidr"},
-      "MapPublicIpOnLaunch": false,
-      "Tags": [
-        {
-          "Key": "Name",
-          "Value": {"Ref": "AWS::StackName"}
-        }
-      ],
-      "VpcId": {"Ref": "VPC"}
-    },
-    "Type": "AWS::EC2::Subnet"
-  },
-  "PrivateSubnet2": {
-    "Properties": {
-      "AvailabilityZone": {"Ref": "Subnet2AZ"},
-      "CidrBlock": {"Ref": "PrivateSubnet2cidr"},
-      "MapPublicIpOnLaunch": false,
-      "Tags": [
-        {
-          "Key": "Name",
-          "Value": {"Ref": "AWS::StackName"}
-        }
-      ],
-      "VpcId": {"Ref": "VPC"}
-    },
-    "Type": "AWS::EC2::Subnet"
   },
   "PublicSubnet1": {
     "Properties": {
@@ -129,6 +101,80 @@
       "VpcId": {"Ref": "VPC"}
     },
     "Type": "AWS::EC2::Subnet"
+  },
+  "PublicRouteTable": {
+    "Type" : "AWS::EC2::RouteTable",
+    "Properties": {
+      "VpcId": {"Ref": "VPC"},
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": {"Ref": "AWS::StackName"}
+        }
+      ]
+    }
+  },
+  "PrivateRouteTable1": {
+    "Type" : "AWS::EC2::RouteTable",
+    "Properties": {
+      "VpcId": {"Ref": "VPC"},
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": {"Ref": "AWS::StackName"}
+        }
+      ]
+    }
+  },
+  "PrivateRouteTable2": {
+    "Type" : "AWS::EC2::RouteTable",
+    "Properties": {
+      "VpcId": {"Ref": "VPC"},
+      "Tags": [
+        {
+          "Key": "Name",
+          "Value": {"Ref": "AWS::StackName"}
+        }
+      ]
+    }
+  },
+  "PublicRouteTableAssociation1": {
+    "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+    "Properties" : {
+      "RouteTableId" : {"Ref": "PublicRouteTable"},
+      "SubnetId" : {"Ref": "PublicSubnet1"}
+    }
+  },
+  "PublicRouteTableAssociation2": {
+    "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+    "Properties" : {
+      "RouteTableId" : {"Ref": "PublicRouteTable"},
+      "SubnetId" : {"Ref": "PublicSubnet2"}
+    }
+  },
+  "RouteExternal": {
+    "Type" : "AWS::EC2::Route",
+    "Properties": {
+      "RouteTableId": {"Ref": "PublicRouteTable"},
+      "DestinationCidrBlock" : "0.0.0.0/0",
+      "GatewayId": {"Ref": "IGW"}
+    }
+  },
+  "RouteNat1": {
+    "Type" : "AWS::EC2::Route",
+    "Properties": {
+      "RouteTableId": {"Ref": "PrivateRouteTable1"},
+      "DestinationCidrBlock" : "0.0.0.0/0",
+      "NatGatewayId": {"Ref": "NAT1"}
+    }
+  },
+  "RouteNat2": {
+    "Type" : "AWS::EC2::Route",
+    "Properties": {
+      "RouteTableId": {"Ref": "PrivateRouteTable2"},
+      "DestinationCidrBlock" : "0.0.0.0/0",
+      "NatGatewayId": {"Ref": "NAT2"}
+    }
   },
   "IGW": {
     "Type" : "AWS::EC2::InternetGateway"
@@ -176,7 +222,53 @@
       "SubnetId": {"Ref": "PublicSubnet1"},
       "SecurityGroupIds" : [
         { "Ref" : "BastionSecurityGroup" }
-      ]
+      ],
+      "UserData": {
+        "Fn::Base64": {
+          "Fn::Join": [
+            "\n",
+            [
+              "#cloud-config",
+              {
+                "Fn::Join": [
+                  "",
+                  [
+                    "hostname: ",
+                    {
+                      "Fn::Join": [
+                        ".",
+                        [
+                          "gw",
+                          {"Ref": "ENV"},
+                          {"Ref": "DOMAIN"}
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              },
+              {
+                "Fn::Join": [
+                  "",
+                  [
+                    "fqdn: ",
+                    {
+                      "Fn::Join": [
+                        ".",
+                        [
+                          "gw",
+                          {"Ref": "ENV"},
+                          {"Ref": "DOMAIN"}
+                        ]
+                      ]
+                    }
+                  ]
+                ]
+              }
+            ]
+          ]
+        }
+      }
     }
   },
   "BastionSecurityGroup": {
@@ -197,6 +289,10 @@
         "Fn::GetAtt": ["BastionInstance", "PublicIp"]
       },
       "Description": "Bastion instance IP address "
+    },
+    "VPCId": {
+      "Value": {"Ref": "VPC"},
+      "Description": "VPC id"
     }
   }
 }
